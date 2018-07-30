@@ -62,6 +62,7 @@ func mainImpl() error {
     if err != nil {
         return err
     }
+    fmt.Println("XX: ", s)
 
     return nil
 }
