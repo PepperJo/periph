@@ -59,7 +59,10 @@ func (d *Dev) ReadRF() error {
         return err
     }
 
-    fmt.Println("rf = %h", rf)
+    for _, e := range rf {
+        fmt.Print("%h", e)
+    }
+    fmt.Println()
 
     return nil
 }
