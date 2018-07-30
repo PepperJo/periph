@@ -6,7 +6,7 @@ import (
     "fmt"
     "os"
     "errors"
-    "io/ioutils"
+    "io/ioutil"
     "log"
 
     "periph.io/x/periph/conn"
