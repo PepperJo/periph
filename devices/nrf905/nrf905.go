@@ -53,8 +53,9 @@ type Dev struct {
 }
 
 func (d *Dev) ReadRF() error {
+    cmd := [10]byte{0x1, 0x0}
     var rf [10]byte
-    if err := d.c.Tx([]byte{0x1, 0x0}, rf[:]); err != nil {
+    if err := d.c.Tx(cmd[:], rf[:]); err != nil {
         return err
     }
 
