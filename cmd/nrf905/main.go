@@ -8,9 +8,7 @@
 package main
 
 import (
-    "periph.io/x/periph/conn/gpio"
     "periph.io/x/periph/conn/gpio/gpioreg"
-    "periph.io/x/periph/conn/physic"
     "periph.io/x/periph/conn/spi"
     "periph.io/x/periph/conn/spi/spireg"
     "periph.io/x/periph/devices/nrf905"
