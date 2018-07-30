@@ -8,6 +8,8 @@
 package main
 
 import (
+    "flag"
+
     "periph.io/x/periph/conn/gpio/gpioreg"
     "periph.io/x/periph/conn/spi"
     "periph.io/x/periph/conn/spi/spireg"
