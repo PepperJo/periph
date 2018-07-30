@@ -53,13 +53,13 @@ type Dev struct {
 }
 
 func (d *Dev) ReadRF() error {
-    cmd := [10]byte{0x10}
-    var rf [10]byte
+    cmd := [11]byte{0x10}
+    var rf [11]byte
     if err := d.c.Tx(cmd[:], rf[:]); err != nil {
         return err
     }
 
-    fmt.Println("rf = ", rf)
+    fmt.Println("rf = %h", rf)
 
     return nil
 }
