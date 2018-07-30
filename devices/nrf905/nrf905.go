@@ -4,10 +4,6 @@ package nrf905
 
 import (
     "fmt"
-    "os"
-    "errors"
-    "io/ioutil"
-    "log"
 
     "periph.io/x/periph/conn"
     "periph.io/x/periph/conn/physic"

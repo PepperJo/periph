@@ -9,6 +9,10 @@ package main
 
 import (
     "flag"
+    "os"
+    "errors"
+    "io/ioutil"
+    "log"
 
     "periph.io/x/periph/conn/gpio/gpioreg"
     "periph.io/x/periph/conn/spi"
