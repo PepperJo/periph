@@ -62,6 +62,7 @@ func mainImpl() error {
     if err != nil {
         return err
     }
+    s.ReadRF()
 
     return nil
 }
