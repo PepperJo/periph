@@ -16,6 +16,7 @@ import (
     "log"
 
     "periph.io/x/periph/conn/gpio/gpioreg"
+    "periph.io/x/periph/conn/physic"
     "periph.io/x/periph/conn/spi"
     "periph.io/x/periph/conn/spi/spireg"
     "periph.io/x/periph/devices/nrf905"
@@ -58,7 +59,20 @@ func mainImpl() error {
     am := gpioreg.ByName(*amName)
     dr := gpioreg.ByName(*drName)
 
-    s, err := nrf905.New(c, trx_en, pwr_up, tx_en, am, dr)
+    opts := nrf905.Opts{
+        CenterFrequency: 868*physic.MegaHertz + 400*physic.KiloHertz,
+        OutputPower: nrf905.PowerM10dBm,
+        ReducedRXCurrent: false,
+        AutoRetransmit: false,
+        TXAddressWidth: nrf905.AddressWidth4,
+        RXAddress: []byte{0x93, 0x9a, 0x0c, 0xff},
+        RXPayloadWidth: 24,
+        TXPayloadWidth: 24,
+        CrystalFrequency: nrf905.Crystal16MHz,
+        CRCMode: nrf905.CRC16Bit,
+    }
+
+    s, err := nrf905.New(c, trx_en, pwr_up, tx_en, am, dr, &opts)
     if err != nil {
         return err
     }
