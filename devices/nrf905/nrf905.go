@@ -3,8 +3,8 @@
 package nrf905
 
 import (
-    "fmt"
     "log"
+    "errors"
 
     "periph.io/x/periph/conn"
     "periph.io/x/periph/conn/physic"
@@ -115,17 +115,114 @@ var DefaultOpts = Opts{
     CRCMode: CRC16Bit,
 }
 
+func b2i(b bool) byte {
+    if b {
+        return 1
+    }
+    return 0
+}
+
+const (
+    // RFConfig[1]
+    AutoRetransmitOffset = 5
+    ReducedRXCurrentOffset = 4
+    OutputPowerOffset = 2
+    PllOffset = 1
+    // RFConfig[2]
+    TXAddressWidthOffset = 4
+    RXAddressWidthOffset = 0
+    // RFConfig[9]
+    CRCModeOffset = 7
+    CRCEnableOffset = 6
+    CrystalFrequencyOffset = 3
+)
+
+func getAddressWidth(address Address) (AddressWidth, error) {
+    var rxAddressWidth AddressWidth
+    switch len(address) {
+    case 1:
+        rxAddressWidth = AddressWidth1
+    case 4:
+        rxAddressWidth = AddressWidth4
+    default:
+        return AddressWidth1, errors.New("invalid address width")
+    }
+    return rxAddressWidth, nil
+}
+
+func (opts *Opts) validate() error {
+    _, err := getAddressWidth(opts.RXAddress)
+    if err != nil {
+        return err
+    }
+    if opts.RXPayloadWidth > 32 {
+        return errors.New("RX payload width to large")
+    }
+    if opts.TXPayloadWidth > 32 {
+        return errors.New("TX payload width to large")
+    }
+    return nil
+}
+
 func (opts *Opts) encode(data [10]byte) {
     //  fRF = ( 422.4 + CH_NOd /10)*(1+HFREQ_PLLd) MHz
     var channel = 128 * (78125 * opts.CenterFrequency - 33)
-    var pll = 0
-    if channel & 0x1F != channel {
+    var pll byte = 0
+    if channel & 0x1FF != channel {
         channel = 64 * (78125 * opts.CenterFrequency - 66)
         pll = 1
     }
+    data[0] = byte(channel & 0xFF)
+    data[1] = b2i(opts.AutoRetransmit) << AutoRetransmitOffset |
+              b2i(opts.ReducedRXCurrent) << ReducedRXCurrentOffset |
+              byte(opts.OutputPower << OutputPowerOffset) |
+              pll << PllOffset | byte(channel >> 8)
+    RXAddressWidth, _ := getAddressWidth(opts.RXAddress)
+    data[2] = byte(opts.TXAddressWidth << TXAddressWidthOffset) |
+              byte(RXAddressWidth)
+    data[3] = byte(opts.RXPayloadWidth)
+    data[4] = byte(opts.TXPayloadWidth)
+    switch RXAddressWidth {
+    case AddressWidth1:
+        data[5] = opts.RXAddress[0]
+    case AddressWidth4:
+        data[5] = opts.RXAddress[0]
+        data[6] = opts.RXAddress[1]
+        data[7] = opts.RXAddress[2]
+        data[8] = opts.RXAddress[3]
+    }
+    data[9] = byte(opts.CrystalFrequency << CrystalFrequencyOffset)
+    switch opts.CRCMode {
+    case CRC8Bit:
+        data[9] = data[9] | 1 << CRCEnableOffset
+    case CRC16Bit:
+        data[9] = data[9] | 1 << CRCEnableOffset | 1 << CRCModeOffset
+    }
 }
 
-func (opts *Opts) decode(data [10]byte) error {
+type spiInstruction uint8
+
+const (
+    writeRF         spiInstruction = 0
+    readRF          spiInstruction = 0x10
+    writeTXPayload  spiInstruction = 0x20
+    readTXPayload   spiInstruction = 0x21
+    writeTXAddress  spiInstruction = 0x22
+    readTXAddress   spiInstruction = 0x23
+    readRXPayload   spiInstruction = 0x24
+    channelConfig   spiInstruction = 0x80
+)
+
+func (d *Dev) writeRFConfig() error {
+
+}
+
+func (d *Dev) readRFConfig(data []byte) error {
+    cmd := [11]byte{0x10,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}
+    var rf [11]byte
+    if err := d.c.Tx(cmd[:], rf[:]); err != nil {
+        return err
+    }
     log.Printf("Decode RFConfig:")
     log.Printf("RFConfig[0] - CH_NO[7:0]: %02x", data[0])
     log.Printf("RFConfig[1] - AUTO_RETRAN,RX_RED_PWR,PA_PWR[1:0],HFREQ_PLL,CH_NO[8]: %02x", data[1])
@@ -137,8 +234,6 @@ func (opts *Opts) decode(data [10]byte) error {
     log.Printf("RFConfig[7] - RX_ADDRESS: %02x", data[7])
     log.Printf("RFConfig[8] - RX_ADDRESS: %02x", data[8])
     log.Printf("RFConfig[9] - CRC_MODE,CRC_EN,XOF[2:0],UP_CLK_EN,UP_CLK_FREQ[1:0]: %02x", data[9])
-
-    return nil
 }
 
 func (d *Dev) ReadRF() error {
@@ -148,10 +243,7 @@ func (d *Dev) ReadRF() error {
         return err
     }
 
-    for _, e := range rf {
-        fmt.Printf("%x ", e)
-    }
-    fmt.Println()
+    decodeOpts(rf[1:])
 
     return nil
 }
