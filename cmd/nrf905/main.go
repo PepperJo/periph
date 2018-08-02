@@ -60,7 +60,7 @@ func mainImpl() error {
     dr := gpioreg.ByName(*drName)
 
     opts := nrf905.Opts{
-        CenterFrequency: 868*physic.MegaHertz + 400*physic.KiloHertz,
+        CenterFrequency: 868*physic.MegaHertz + 200*physic.KiloHertz,
         OutputPower: nrf905.PowerM10dBm,
         ReducedRXCurrent: false,
         AutoRetransmit: false,

@@ -3,6 +3,7 @@
 package nrf905
 
 import (
+    "fmt"
     "log"
     "errors"
 
@@ -156,6 +157,13 @@ func getAddressWidth(address Address) (AddressWidth, error) {
     return rxAddressWidth, nil
 }
 
+const (
+    pllLowMinFrequency physic.Frequency     = 422400*physic.KiloHertz
+    pllLowMaxFrequency physic.Frequency     = 473500*physic.KiloHertz
+    pllHighMinFrequency physic.Frequency    = 844800*physic.KiloHertz
+    pllHighMaxFrequency physic.Frequency    = 947000*physic.KiloHertz
+)
+
 func (opts *Opts) validate() error {
     _, err := getAddressWidth(opts.RXAddress)
     if err != nil {
@@ -167,16 +175,23 @@ func (opts *Opts) validate() error {
     if opts.TXPayloadWidth > 32 {
         return errors.New("TX payload width to large")
     }
+    if !((opts.CenterFrequency >= pllLowMinFrequency && opts.CenterFrequency <= pllLowMaxFrequency) ||
+        (opts.CenterFrequency >= pllHighMinFrequency && opts.CenterFrequency <= pllHighMaxFrequency)) {
+        return fmt.Errorf("Center frequency %d not supported", opts.CenterFrequency)
+    }
     return nil
 }
 
 func (opts *Opts) encode(data []byte) {
     //  fRF = ( 422.4 + CH_NOd /10)*(1+HFREQ_PLLd) MHz
-    var channel = 128 * (78125 * opts.CenterFrequency - 33)
-    var pll byte = 0
-    if channel & 0x1FF != channel {
-        channel = 64 * (78125 * opts.CenterFrequency - 66)
+    var channel physic.Frequency
+    var pll byte
+    if opts.CenterFrequency >= pllHighMinFrequency {
+        channel = (opts.CenterFrequency - pllHighMinFrequency) / 200000000000
         pll = 1
+    } else {
+        channel = (opts.CenterFrequency - pllLowMinFrequency) / 100000000000
+        pll = 0
     }
     data[0] = byte(channel & 0xFF)
     data[1] = b2i(opts.AutoRetransmit) << AutoRetransmitOffset |
@@ -252,7 +267,7 @@ func (d *Dev) writeCommand(instruction writeInstruction, data []byte) (*statusRe
 func (d *Dev) readCommand(instruction readInstruction, data []byte) (*statusRegister, error) {
     writeBuffer[0] = byte(instruction)
     end := len(data) + 1
-    for i := range writeBuffer[1:end] {
+    for i := 1; i <= end; i++ {
         writeBuffer[i] = 0xFF
     }
     if err := d.c.Tx(writeBuffer[:end], readBuffer[:end]); err != nil {
@@ -266,7 +281,6 @@ func (d *Dev) readCommand(instruction readInstruction, data []byte) (*statusRegi
 func (d *Dev) writeRFConfig(opts *Opts) error {
     var rfConfig [10]byte
     opts.encode(rfConfig[:])
-    printRawRFConfig(rfConfig[:])
     _, err := d.writeCommand(writeRFInstruction, rfConfig[:])
     if err != nil {
         return err
@@ -278,7 +292,7 @@ func (d *Dev) writeRFConfig(opts *Opts) error {
     }
     printRawRFConfig(rfConfig2[:])
     if rfConfig != rfConfig2 {
-        log.Printf("RFConfig not equal")
+        return errors.New("RFConfig not written correctly")
     }
     return nil
 }
