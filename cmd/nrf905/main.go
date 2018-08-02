@@ -72,11 +72,10 @@ func mainImpl() error {
         CRCMode: nrf905.CRC16Bit,
     }
 
-    s, err := nrf905.New(c, trx_en, pwr_up, tx_en, am, dr, &opts)
+    _, err = nrf905.New(c, trx_en, pwr_up, tx_en, am, dr, &opts)
     if err != nil {
         return err
     }
-    s.ReadRF()
 
     return nil
 }

@@ -13,6 +13,10 @@ import (
 )
 
 func New(p spi.Port, trx_ce gpio.PinOut, pwr_up gpio.PinOut, tx_en gpio.PinOut, am gpio.PinIn, dr gpio.PinIn, opts *Opts) (*Dev, error) {
+    if err := opts.validate(); err != nil {
+        return nil, err
+    }
+
     c, err := p.Connect(10*physic.MegaHertz, spi.Mode0, 8)
     if err != nil {
         return nil, err
@@ -34,23 +38,25 @@ func New(p spi.Port, trx_ce gpio.PinOut, pwr_up gpio.PinOut, tx_en gpio.PinOut, 
         return nil, err
     }
 
-    return &Dev{c: c,
+    d := &Dev{c: c,
                 trx_ce: trx_ce,
                 pwr_up: pwr_up,
                 tx_en: tx_en,
                 am: am,
-                dr: dr}, nil
+                dr: dr}
+    d.writeRFConfig(opts)
+    return d, nil
 }
 
 type Dev struct {
-    c       conn.Conn
+    c               conn.Conn
 
-    trx_ce  gpio.PinOut
-    pwr_up  gpio.PinOut
-    tx_en   gpio.PinOut
+    trx_ce          gpio.PinOut
+    pwr_up          gpio.PinOut
+    tx_en           gpio.PinOut
 
-    am      gpio.PinIn
-    dr      gpio.PinIn
+    am              gpio.PinIn
+    dr              gpio.PinIn
 }
 
 type Power uint8
@@ -124,17 +130,17 @@ func b2i(b bool) byte {
 
 const (
     // RFConfig[1]
-    AutoRetransmitOffset = 5
-    ReducedRXCurrentOffset = 4
-    OutputPowerOffset = 2
-    PllOffset = 1
+    AutoRetransmitOffset    = 5
+    ReducedRXCurrentOffset  = 4
+    OutputPowerOffset       = 2
+    PllOffset               = 1
     // RFConfig[2]
-    TXAddressWidthOffset = 4
-    RXAddressWidthOffset = 0
+    TXAddressWidthOffset    = 4
+    RXAddressWidthOffset    = 0
     // RFConfig[9]
-    CRCModeOffset = 7
-    CRCEnableOffset = 6
-    CrystalFrequencyOffset = 3
+    CRCModeOffset           = 7
+    CRCEnableOffset         = 6
+    CrystalFrequencyOffset  = 3
 )
 
 func getAddressWidth(address Address) (AddressWidth, error) {
@@ -164,7 +170,7 @@ func (opts *Opts) validate() error {
     return nil
 }
 
-func (opts *Opts) encode(data [10]byte) {
+func (opts *Opts) encode(data []byte) {
     //  fRF = ( 422.4 + CH_NOd /10)*(1+HFREQ_PLLd) MHz
     var channel = 128 * (78125 * opts.CenterFrequency - 33)
     var pll byte = 0
@@ -200,30 +206,85 @@ func (opts *Opts) encode(data [10]byte) {
     }
 }
 
-type spiInstruction uint8
+type readInstruction uint8
+type writeInstruction uint8
 
 const (
-    writeRF         spiInstruction = 0
-    readRF          spiInstruction = 0x10
-    writeTXPayload  spiInstruction = 0x20
-    readTXPayload   spiInstruction = 0x21
-    writeTXAddress  spiInstruction = 0x22
-    readTXAddress   spiInstruction = 0x23
-    readRXPayload   spiInstruction = 0x24
-    channelConfig   spiInstruction = 0x80
+    writeRFInstruction         writeInstruction    = 0
+    readRFInstruction          readInstruction     = 0x10
+    writeTXPayloadInstruction  writeInstruction    = 0x20
+    readTXPayloadInstruction   readInstruction     = 0x21
+    writeTXAddressInstruction  writeInstruction    = 0x22
+    readTXAddressInstruction   readInstruction     = 0x23
+    readRXPayloadInstruction   readInstruction     = 0x24
+    channelConfigInstruction   writeInstruction    = 0x80
 )
 
-func (d *Dev) writeRFConfig() error {
-
+type statusRegister struct {
+    addressMatch    bool
+    dataReady       bool
 }
 
-func (d *Dev) readRFConfig(data []byte) error {
-    cmd := [11]byte{0x10,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}
-    var rf [11]byte
-    if err := d.c.Tx(cmd[:], rf[:]); err != nil {
+const (
+    addressMatchOffset  = 7
+    dataReadyOffset     = 5
+)
+
+func byteToStatusRegister(data byte) *statusRegister {
+    return &statusRegister{
+        dataReady: (data >> dataReadyOffset) & 0x1 == 0x1,
+        addressMatch: (data >> addressMatchOffset) & 0x1 == 0x1}
+}
+
+var writeBuffer [33 /* max SPI data size  + 1 */]byte
+var readBuffer [33 /* max SPI data size + 1 */]byte
+
+func (d *Dev) writeCommand(instruction writeInstruction, data []byte) (*statusRegister, error) {
+    writeBuffer[0] = byte(instruction)
+    end := len(data) + 1
+    copy(writeBuffer[1:end], data)
+    if err := d.c.Tx(writeBuffer[:end], readBuffer[:end]); err != nil {
+        return nil, err
+    }
+    return byteToStatusRegister(readBuffer[0]), nil
+}
+
+func (d *Dev) readCommand(instruction readInstruction, data []byte) (*statusRegister, error) {
+    writeBuffer[0] = byte(instruction)
+    end := len(data) + 1
+    for i := range writeBuffer[1:end] {
+        writeBuffer[i] = 0xFF
+    }
+    if err := d.c.Tx(writeBuffer[:end], readBuffer[:end]); err != nil {
+        return nil, err
+    }
+    copy(data, readBuffer[1:end])
+
+    return byteToStatusRegister(readBuffer[0]), nil
+}
+
+func (d *Dev) writeRFConfig(opts *Opts) error {
+    var rfConfig [10]byte
+    opts.encode(rfConfig[:])
+    printRawRFConfig(rfConfig[:])
+    _, err := d.writeCommand(writeRFInstruction, rfConfig[:])
+    if err != nil {
         return err
     }
-    log.Printf("Decode RFConfig:")
+    var rfConfig2 [10]byte
+    _, err = d.readCommand(readRFInstruction, rfConfig2[:])
+    if err != nil {
+        return err
+    }
+    printRawRFConfig(rfConfig2[:])
+    if rfConfig != rfConfig2 {
+        log.Printf("RFConfig not equal")
+    }
+    return nil
+}
+
+func printRawRFConfig(data []byte) {
+    log.Printf("RFConfig:")
     log.Printf("RFConfig[0] - CH_NO[7:0]: %02x", data[0])
     log.Printf("RFConfig[1] - AUTO_RETRAN,RX_RED_PWR,PA_PWR[1:0],HFREQ_PLL,CH_NO[8]: %02x", data[1])
     log.Printf("RFConfig[2] - TX_AFW[2:0],RX_AFW[2:0]: %02x", data[2])
@@ -236,14 +297,3 @@ func (d *Dev) readRFConfig(data []byte) error {
     log.Printf("RFConfig[9] - CRC_MODE,CRC_EN,XOF[2:0],UP_CLK_EN,UP_CLK_FREQ[1:0]: %02x", data[9])
 }
 
-func (d *Dev) ReadRF() error {
-    cmd := [11]byte{0x10,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF,0xFF}
-    var rf [11]byte
-    if err := d.c.Tx(cmd[:], rf[:]); err != nil {
-        return err
-    }
-
-    decodeOpts(rf[1:])
-
-    return nil
-}
