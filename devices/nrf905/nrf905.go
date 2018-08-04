@@ -52,6 +52,7 @@ func New(p spi.Port, trx_ce gpio.PinOut, pwr_up gpio.PinOut, tx_en gpio.PinOut, 
 				dr: dr,
 				cd: cd,
 				state: powerDownState}
+	d.PowerDown()
 	d.writeRFConfig(opts)
 	return d, nil
 }
@@ -331,7 +332,7 @@ func (d *Dev) DataReady() (bool, error) {
 	}
 }
 
-func (d *Dev) carrierDetect() (bool, error) {
+func (d *Dev) CarrierDetect() (bool, error) {
 	if d.cd != nil {
 		return bool(d.cd.Read()), nil
 	}
