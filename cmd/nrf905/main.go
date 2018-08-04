@@ -8,81 +8,81 @@
 package main
 
 import (
-    "fmt"
-    "flag"
-    "os"
-    "errors"
-    "io/ioutil"
-    "log"
+	"fmt"
+	"flag"
+	"os"
+	"errors"
+	"io/ioutil"
+	"log"
 
-    "periph.io/x/periph/conn/gpio/gpioreg"
-    "periph.io/x/periph/conn/physic"
-    "periph.io/x/periph/conn/spi"
-    "periph.io/x/periph/conn/spi/spireg"
-    "periph.io/x/periph/devices/nrf905"
+	"periph.io/x/periph/conn/gpio/gpioreg"
+	"periph.io/x/periph/conn/physic"
+	"periph.io/x/periph/conn/spi"
+	"periph.io/x/periph/conn/spi/spireg"
+	"periph.io/x/periph/devices/nrf905"
 )
 
 func mainImpl() error {
-    spiID := flag.String("spi", "", "SPI port to use")
-    trxceName := flag.String("trxce", "", "TRX_CE")
-    pwrupName := flag.String("pwrup", "", "PWR_UP")
-    txenName := flag.String("txen", "", "TX_EN")
-    amName := flag.String("am", "", "AM")
-    drName := flag.String("dr", "", "DR")
+	spiID := flag.String("spi", "", "SPI port to use")
+	trxceName := flag.String("trxce", "", "TRX_CE")
+	pwrupName := flag.String("pwrup", "", "PWR_UP")
+	txenName := flag.String("txen", "", "TX_EN")
+	amName := flag.String("am", "", "AM")
+	drName := flag.String("dr", "", "DR")
 
-    verbose := flag.Bool("v", false, "verbose mode")
-    flag.Parse()
-    if !*verbose {
-        log.SetOutput(ioutil.Discard)
-    }
-    log.SetFlags(log.Lmicroseconds)
-    if flag.NArg() != 0 {
-        return errors.New("unexpected argument, try -help")
-    }
+	verbose := flag.Bool("v", false, "verbose mode")
+	flag.Parse()
+	if !*verbose {
+		log.SetOutput(ioutil.Discard)
+	}
+	log.SetFlags(log.Lmicroseconds)
+	if flag.NArg() != 0 {
+		return errors.New("unexpected argument, try -help")
+	}
 
-    if _, err := hostInit(); err != nil {
-        return err
-    }
+	if _, err := hostInit(); err != nil {
+		return err
+	}
 
-    c, err := spireg.Open(*spiID)
-    if err != nil {
-        return err
-    }
-    defer c.Close()
-    if p, ok := c.(spi.Pins); ok {
-        log.Printf("Using pins CLK: %s  MOSI: %s MISO: %s  CS: %s", p.CLK(), p.MOSI(), p.MISO(), p.CS())
-    }
+	c, err := spireg.Open(*spiID)
+	if err != nil {
+		return err
+	}
+	defer c.Close()
+	if p, ok := c.(spi.Pins); ok {
+		log.Printf("Using pins CLK: %s  MOSI: %s MISO: %s  CS: %s", p.CLK(), p.MOSI(), p.MISO(), p.CS())
+	}
 
-    trx_en := gpioreg.ByName(*trxceName)
-    pwr_up := gpioreg.ByName(*pwrupName)
-    tx_en := gpioreg.ByName(*txenName)
-    am := gpioreg.ByName(*amName)
-    dr := gpioreg.ByName(*drName)
+	trx_en := gpioreg.ByName(*trxceName)
+	pwr_up := gpioreg.ByName(*pwrupName)
+	tx_en := gpioreg.ByName(*txenName)
+	am := gpioreg.ByName(*amName)
+	dr := gpioreg.ByName(*drName)
 
-    opts := nrf905.Opts{
-        CenterFrequency: 868*physic.MegaHertz + 200*physic.KiloHertz,
-        OutputPower: nrf905.PowerM10dBm,
-        ReducedRXCurrent: false,
-        AutoRetransmit: false,
-        TXAddressWidth: nrf905.AddressWidth4,
-        RXAddress: []byte{0x93, 0x9a, 0x0c, 0xff},
-        RXPayloadWidth: 24,
-        TXPayloadWidth: 24,
-        CrystalFrequency: nrf905.Crystal16MHz,
-        CRCMode: nrf905.CRC16Bit,
-    }
+	opts := nrf905.Opts{
+		CenterFrequency: 868*physic.MegaHertz + 200*physic.KiloHertz,
+		OutputPower: nrf905.PowerM10dBm,
+		ReducedRXCurrent: false,
+		AutoRetransmit: false,
+		TXAddressWidth: nrf905.AddressWidth3,
+		RXAddress: []byte{0x93, 0x9a, 0x0c, 0xff},
+		RXPayloadWidth: 24,
+		TXPayloadWidth: 24,
+		CrystalFrequency: nrf905.Crystal16MHz,
+		CRCMode: nrf905.CRC16Bit,
+	}
 
-    _, err = nrf905.New(c, trx_en, pwr_up, tx_en, am, dr, &opts)
-    if err != nil {
-        return err
-    }
+	_, err = nrf905.New(c, trx_en, pwr_up, tx_en, am, dr, nil, &opts)
+	if err != nil {
+		return err
+	}
 
-    return nil
+	return nil
 }
 
 func main() {
-    if err := mainImpl(); err != nil {
-        fmt.Fprintf(os.Stderr, "nrf905: %s.\n", err)
-        os.Exit(1)
-    }
+	if err := mainImpl(); err != nil {
+		fmt.Fprintf(os.Stderr, "nrf905: %s.\n", err)
+		os.Exit(1)
+	}
 }
