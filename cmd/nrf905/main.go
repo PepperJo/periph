@@ -14,13 +14,13 @@ import (
 	"errors"
 	"io/ioutil"
 	"log"
+	"time"
 
 	"periph.io/x/periph/conn/gpio/gpioreg"
 	"periph.io/x/periph/conn/physic"
 	"periph.io/x/periph/conn/spi"
 	"periph.io/x/periph/conn/spi/spireg"
 	"periph.io/x/periph/devices/nrf905"
-	"time"
 )
 
 func mainImpl() error {
@@ -66,9 +66,9 @@ func mainImpl() error {
 		CenterFrequency: 868*physic.MegaHertz + 200*physic.KiloHertz,
 		OutputPower: nrf905.PowerM10dBm,
 		ReducedRXCurrent: false,
-		AutoRetransmit: false,
+		AutoRetransmit: true,
 		TXAddressWidth: nrf905.AddressWidth3,
-		RXAddress: []byte{0x93, 0x9a, 0x0c, 0xff},
+		RXAddress: []byte{0x93, 0x9a, 0x0c},
 		RXPayloadWidth: 24,
 		TXPayloadWidth: 24,
 		CrystalFrequency: nrf905.Crystal16MHz,
@@ -96,8 +96,25 @@ func mainImpl() error {
 			return nil
 		}
 		log.Printf("Data Ready = %t", dr)
+		if dr {
+			log.Printf("Payload")
+			var payload [24]byte
+			d.Receive(time.Minute, payload[:])
+			for _, x := range payload {
+				log.Printf("02x ", x)
+			}
+		}
 		time.Sleep(time.Second)
 	}
+
+	//var payload [24]byte
+	//err = d.Send(time.Minute, payload[:], false)
+	//if err != nil {
+	//	return err
+	//}
+	//for true {
+	//	;
+	//}
 
 	return nil
 }

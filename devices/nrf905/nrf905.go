@@ -43,8 +43,13 @@ func New(p spi.Port, trx_ce gpio.PinOut, pwr_up gpio.PinOut, tx_en gpio.PinOut, 
 			return nil, err
 		}
 	}
+	if cd != nil {
+		if err := cd.In(gpio.PullDown, gpio.NoEdge); err != nil {
+			return nil, err
+		}
+	}
 
-	d := &Dev{  c: c,
+	d := &Dev{	c: c,
 				trx_ce: trx_ce,
 				pwr_up: pwr_up,
 				tx_en: tx_en,
@@ -159,16 +164,16 @@ const (
 
 func getAddressWidth(address Address) (AddressWidth, error) {
 	if len(address) < 1 && len(address) > 4 {
-	    return AddressWidth1, errors.New("invalid address width")
+		return AddressWidth1, errors.New("invalid address width")
 	}
 	return AddressWidth(len(address)), nil
 }
 
 const (
-	PllLowMinFrequency physic.Frequency     = 422400*physic.KiloHertz
-	PllLowMaxFrequency physic.Frequency     = 473500*physic.KiloHertz
-	PllHighMinFrequency physic.Frequency    = 844800*physic.KiloHertz
-	PllHighMaxFrequency physic.Frequency    = 947000*physic.KiloHertz
+	PllLowMinFrequency	= 422400*physic.KiloHertz
+	PllLowMaxFrequency	= 473500*physic.KiloHertz
+	PllHighMinFrequency	= 844800*physic.KiloHertz
+	PllHighMaxFrequency	= 947000*physic.KiloHertz
 )
 
 func freqToChannelPll(frequency physic.Frequency) (byte, bool, error) {
@@ -213,8 +218,8 @@ func (opts *Opts) encode(data []byte) {
 	data[3] = byte(opts.RXPayloadWidth)
 	data[4] = byte(opts.TXPayloadWidth)
 	for i := 0; i < int(RXAddressWidth); i++ {
-        data[5 + i] = opts.RXAddress[i]
-    }
+		data[5 + i] = opts.RXAddress[i]
+	}
 	data[9] = byte(opts.CrystalFrequency << CrystalFrequencyOffset)
 	switch opts.CRCMode {
 	case CRC8Bit:
@@ -381,13 +386,42 @@ func (d *Dev) Receive(timeout time.Duration, payload []byte) error {
 	if !d.dr.WaitForEdge(timeout) {
 		return errors.New("time out waiting for data ready")
 	}
-	// TODO remove
-	dr, _ := d.DataReady()
-	log.Printf("Receive: dr = %t", dr)
 
 	if _, err := d.readCommand(readRXPayloadInstruction, payload); err != nil {
+		d.Standby()
 		return err
 	}
 	return nil
 }
 
+// TODO: TX address
+func (d *Dev) Send(timeout time.Duration, payload []byte, rxModeAfter bool) error {
+	if d.state != standbyState {
+		return errors.New("not in standby operating state")
+	} else {
+		d.tx_en.Out(gpio.High)
+		d.state = radioTXState
+	}
+
+	if _, err := d.writeCommand(writeTXPayloadInstruction, payload); err != nil {
+		d.Standby()
+		return err
+	}
+	d.trx_ce.Out(gpio.High)
+	//TODO: retransmit
+	d.tx_en.Out(gpio.Low)
+	if rxModeAfter {
+		// RX mode after TX
+		d.state = radioRXState
+	} else {
+		// Standby
+		d.trx_ce.Out(gpio.Low)
+		d.state = standbyState
+	}
+
+	if !d.dr.WaitForEdge(timeout) {
+		return errors.New("time out waiting sending data")
+	}
+
+	return nil
+}
