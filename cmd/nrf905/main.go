@@ -66,9 +66,10 @@ func mainImpl() error {
 		CenterFrequency: 868*physic.MegaHertz + 200*physic.KiloHertz,
 		OutputPower: nrf905.PowerM10dBm,
 		ReducedRXCurrent: false,
-		AutoRetransmit: true,
+		AutoRetransmit: false,
 		TXAddressWidth: nrf905.AddressWidth3,
 		RXAddress: []byte{0x93, 0x9a, 0x0c},
+		//RXAddress: []byte{0x0, 0x0, 0x0},
 		RXPayloadWidth: 24,
 		TXPayloadWidth: 24,
 		CrystalFrequency: nrf905.Crystal16MHz,
@@ -81,40 +82,41 @@ func mainImpl() error {
 	}
 
 	d.Standby()
-	err = d.EnableReceive()
-	if err != nil {
-		return err
-	}
-	for true {
-		cd, err := d.CarrierDetect()
-		if err != nil {
-			return nil
-		}
-		log.Printf("Carrier Detect = %t", cd)
-		dr, err := d.DataReady()
-		if err != nil {
-			return nil
-		}
-		log.Printf("Data Ready = %t", dr)
-		if dr {
-			log.Printf("Payload")
-			var payload [24]byte
-			d.Receive(time.Minute, payload[:])
-			for _, x := range payload {
-				log.Printf("02x ", x)
-			}
-		}
-		time.Sleep(time.Second)
-	}
-
-	//var payload [24]byte
-	//err = d.Send(time.Minute, payload[:], false)
+	//err = d.EnableReceive()
 	//if err != nil {
 	//	return err
 	//}
 	//for true {
-	//	;
+	//	cd, err := d.CarrierDetect()
+	//	if err != nil {
+	//		return nil
+	//	}
+	//	log.Printf("Carrier Detect = %t", cd)
+	//	dr, err := d.DataReady()
+	//	if err != nil {
+	//		return nil
+	//	}
+	//	log.Printf("Data Ready = %t", dr)
+	//	if dr {
+	//		log.Printf("Payload")
+	//		var payload [24]byte
+	//		d.Rx(time.Minute, payload[:])
+	//		for _, x := range payload {
+	//			log.Printf("02x ", x)
+	//		}
+	//	}
+	//	time.Sleep(time.Second)
 	//}
+
+	d.SetTxAddress([]byte{0x1a, 0x2a, 0x3a})
+	var payload [24]byte
+	err = d.Tx(time.Minute, payload[:], false)
+	if err != nil {
+		return err
+	}
+	for true {
+		;
+	}
 
 	return nil
 }

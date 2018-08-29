@@ -44,7 +44,7 @@ func New(p spi.Port, trx_ce gpio.PinOut, pwr_up gpio.PinOut, tx_en gpio.PinOut, 
 		}
 	}
 	if cd != nil {
-		if err := cd.In(gpio.PullDown, gpio.NoEdge); err != nil {
+		if err := cd.In(gpio.Float, gpio.NoEdge); err != nil {
 			return nil, err
 		}
 	}
@@ -56,33 +56,36 @@ func New(p spi.Port, trx_ce gpio.PinOut, pwr_up gpio.PinOut, tx_en gpio.PinOut, 
 				am: am,
 				dr: dr,
 				cd: cd,
-				state: powerDownState}
+				state: powerDownState,
+				txAddressWidth: opts.TXAddressWidth}
 	d.PowerDown()
 	d.writeRFConfig(opts)
 	return d, nil
 }
 
 type Dev struct {
-	c               conn.Conn
+	c				conn.Conn
 
-	trx_ce          gpio.PinOut
-	pwr_up          gpio.PinOut
-	tx_en           gpio.PinOut
+	trx_ce			gpio.PinOut
+	pwr_up			gpio.PinOut
+	tx_en			gpio.PinOut
 
-	am              gpio.PinIn
-	dr              gpio.PinIn
-	cd              gpio.PinIn
+	am				gpio.PinIn
+	dr				gpio.PinIn
+	cd				gpio.PinIn
 
-	state           operatingState
+	state			operatingState
+
+	txAddressWidth	AddressWidth
 }
 
 type Power uint8
 
 const (
-	PowerM10dBm  Power = 0
-	PowerM2dBm   Power = 1
-	Power6dBm    Power = 2
-	Power10dBm   Power = 3
+	PowerM10dBm		Power = 0
+	PowerM2dBm		Power = 1
+	Power6dBm		Power = 2
+	Power10dBm		Power = 3
 )
 
 type AddressWidth uint8
@@ -101,7 +104,7 @@ type PayloadWidth uint8
 type CRCMode uint8
 
 const (
-	NoCRC       CRCMode = iota
+	NoCRC		CRCMode = iota
 	CRC8Bit
 	CRC16Bit
 )
@@ -109,31 +112,30 @@ const (
 type CrystalFrequency uint8
 
 const (
-	Crystal4MHz   CrystalFrequency = 0
-	Crystal8MHz   CrystalFrequency = 1
-	Crystal12MHz  CrystalFrequency = 2
-	Crystal16MHz  CrystalFrequency = 3
-	Crystal20MHz  CrystalFrequency = 4
+	Crystal4MHz		CrystalFrequency = 0
+	Crystal8MHz		CrystalFrequency = 1
+	Crystal12MHz	CrystalFrequency = 2
+	Crystal16MHz	CrystalFrequency = 3
+	Crystal20MHz	CrystalFrequency = 4
 )
 
 type Opts struct {
-	CenterFrequency     physic.Frequency
-	OutputPower         Power
-	ReducedRXCurrent    bool
-	AutoRetransmit      bool
-	TXAddressWidth      AddressWidth
-	RXAddress           Address
-	RXPayloadWidth      PayloadWidth
-	TXPayloadWidth      PayloadWidth
-	CrystalFrequency    CrystalFrequency
-	CRCMode             CRCMode
+	CenterFrequency		physic.Frequency
+	OutputPower			Power
+	ReducedRXCurrent	bool
+	AutoRetransmit		bool
+	TXAddressWidth		AddressWidth
+	RXAddress			Address
+	RXPayloadWidth		PayloadWidth
+	TXPayloadWidth		PayloadWidth
+	CrystalFrequency	CrystalFrequency
+	CRCMode				CRCMode
 }
 
 var DefaultOpts = Opts{
 	OutputPower: PowerM10dBm,
 	ReducedRXCurrent: false,
 	AutoRetransmit: false,
-	TXAddressWidth: AddressWidth4,
 	RXPayloadWidth: 32,
 	TXPayloadWidth: 32,
 	CrystalFrequency: Crystal16MHz,
@@ -149,17 +151,17 @@ func b2i(b bool) byte {
 
 const (
 	// RFConfig[1]
-	AutoRetransmitOffset    = 5
-	ReducedRXCurrentOffset  = 4
-	OutputPowerOffset       = 2
-	PllOffset               = 1
+	AutoRetransmitOffset	= 5
+	ReducedRXCurrentOffset	= 4
+	OutputPowerOffset		= 2
+	PllOffset				= 1
 	// RFConfig[2]
-	TXAddressWidthOffset    = 4
-	RXAddressWidthOffset    = 0
+	TXAddressWidthOffset	= 4
+	RXAddressWidthOffset	= 0
 	// RFConfig[9]
-	CRCModeOffset           = 7
-	CRCEnableOffset         = 6
-	CrystalFrequencyOffset  = 3
+	CRCModeOffset			= 7
+	CRCEnableOffset			= 6
+	CrystalFrequencyOffset	= 3
 )
 
 func getAddressWidth(address Address) (AddressWidth, error) {
@@ -209,12 +211,12 @@ func (opts *Opts) encode(data []byte) {
 	channel, pll, _ := freqToChannelPll(opts.CenterFrequency)
 	data[0] = byte(channel & 0xFF)
 	data[1] = b2i(opts.AutoRetransmit) << AutoRetransmitOffset |
-			  b2i(opts.ReducedRXCurrent) << ReducedRXCurrentOffset |
-			  byte(opts.OutputPower << OutputPowerOffset) |
-			  b2i(pll) << PllOffset | byte(channel >> 8)
+		b2i(opts.ReducedRXCurrent) << ReducedRXCurrentOffset |
+		byte(opts.OutputPower << OutputPowerOffset) |
+		b2i(pll) << PllOffset | byte(channel >> 8)
 	RXAddressWidth, _ := getAddressWidth(opts.RXAddress)
 	data[2] = byte(opts.TXAddressWidth << TXAddressWidthOffset) |
-			  byte(RXAddressWidth)
+		byte(RXAddressWidth)
 	data[3] = byte(opts.RXPayloadWidth)
 	data[4] = byte(opts.TXPayloadWidth)
 	for i := 0; i < int(RXAddressWidth); i++ {
@@ -233,25 +235,25 @@ type readInstruction uint8
 type writeInstruction uint8
 
 const (
-	writeRFInstruction         writeInstruction    = 0
-	readRFInstruction          readInstruction     = 0x10
-	writeTXPayloadInstruction  writeInstruction    = 0x20
-	readTXPayloadInstruction   readInstruction     = 0x21
-	writeTXAddressInstruction  writeInstruction    = 0x22
-	readTXAddressInstruction   readInstruction     = 0x23
-	readRXPayloadInstruction   readInstruction     = 0x24
-	channelConfigInstruction   writeInstruction    = 0x80
-	statusRegisterInstruction  readInstruction     = 0xFF
+	writeRFInstruction		 writeInstruction	= 0
+	readRFInstruction		  readInstruction	 = 0x10
+	writeTXPayloadInstruction  writeInstruction	= 0x20
+	readTXPayloadInstruction   readInstruction	 = 0x21
+	writeTXAddressInstruction  writeInstruction	= 0x22
+	readTXAddressInstruction   readInstruction	 = 0x23
+	readRXPayloadInstruction   readInstruction	 = 0x24
+	channelConfigInstruction   writeInstruction	= 0x80
+	statusRegisterInstruction  readInstruction	 = 0xFF
 )
 
 type statusRegister struct {
-	addressMatch    bool
-	dataReady       bool
+	addressMatch	bool
+	dataReady	   bool
 }
 
 const (
 	addressMatchOffset  = 7
-	dataReadyOffset     = 5
+	dataReadyOffset	 = 5
 )
 
 func byteToStatusRegister(data byte) *statusRegister {
@@ -293,7 +295,15 @@ func (d *Dev) writeRFConfig(opts *Opts) error {
 	if _, err := d.writeCommand(writeRFInstruction, rfConfig[:]); err != nil {
 		return err
 	}
+
+	// TODO: remove
 	printRawRFConfig(rfConfig[:])
+
+	var rfConfig2 [10]byte
+	if _, err := d.readCommand(readRFInstruction, rfConfig2[:]); err != nil {
+		return err
+	}
+	printRawRFConfig(rfConfig2[:])
 	return nil
 }
 
@@ -379,7 +389,7 @@ func (d *Dev) EnableReceive() error {
 	return nil
 }
 
-func (d *Dev) Receive(timeout time.Duration, payload []byte) error {
+func (d *Dev) Rx(timeout time.Duration, payload []byte) error {
 	if err := d.EnableReceive(); err != nil {
 		return err
 	}
@@ -394,14 +404,33 @@ func (d *Dev) Receive(timeout time.Duration, payload []byte) error {
 	return nil
 }
 
-// TODO: TX address
-func (d *Dev) Send(timeout time.Duration, payload []byte, rxModeAfter bool) error {
+func (d *Dev) SetTxAddress(address Address) error {
+	if d.state != standbyState || d.state != powerDownState {
+		return errors.New("not in standby or power down mode")
+	}
+
+	addressWidth, err := getAddressWidth(address)
+	if err != nil {
+		return err
+	}
+	if addressWidth != d.txAddressWidth {
+		return errors.New("address width does not match configured width")
+	}
+
+	if _, err  = d.writeCommand(writeTXAddressInstruction, address); err != nil {
+		return err
+	}
+
+	return nil
+}
+
+func (d *Dev) Tx(timeout time.Duration, payload []byte, rxModeAfter bool) error {
 	if d.state != standbyState {
 		return errors.New("not in standby operating state")
-	} else {
-		d.tx_en.Out(gpio.High)
-		d.state = radioTXState
 	}
+
+	d.tx_en.Out(gpio.High)
+	d.state = radioTXState
 
 	if _, err := d.writeCommand(writeTXPayloadInstruction, payload); err != nil {
 		d.Standby()
@@ -409,6 +438,11 @@ func (d *Dev) Send(timeout time.Duration, payload []byte, rxModeAfter bool) erro
 	}
 	d.trx_ce.Out(gpio.High)
 	//TODO: retransmit
+	if !d.dr.WaitForEdge(timeout) {
+		// it seems like transmissions get corrupted if we don't wait for data ready
+		d.Standby()
+		return errors.New("time out waiting sending data")
+	}
 	d.tx_en.Out(gpio.Low)
 	if rxModeAfter {
 		// RX mode after TX
@@ -417,10 +451,6 @@ func (d *Dev) Send(timeout time.Duration, payload []byte, rxModeAfter bool) erro
 		// Standby
 		d.trx_ce.Out(gpio.Low)
 		d.state = standbyState
-	}
-
-	if !d.dr.WaitForEdge(timeout) {
-		return errors.New("time out waiting sending data")
 	}
 
 	return nil
